@@ -33,7 +33,7 @@
     <string name="hint5">DIA</string>
 
     <string name="confirm_changing">ПОДТВЕРДИТЬ</string>
-    <string name="break_period">СБРОСИТЬ</string>
+    <string name="reset">СБРОСИТЬ</string>
 
     <string name="page3_attention2">Не пытайтесь <b>самостоятельно</b></string>
     <string name="page3_attention3">определить рецепт.</string>
