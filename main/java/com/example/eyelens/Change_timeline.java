@@ -1,22 +1,17 @@
 package com.example.eyelens;
 
-import static android.app.job.JobInfo.PRIORITY_HIGH;
-
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
 
-import android.annotation.SuppressLint;
 import android.app.AlarmManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
+import android.database.sqlite.SQLiteDatabase;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Telephony;
-import android.telephony.AvailableNetworkInfo;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -28,8 +23,9 @@ import java.util.Date;
 public class Change_timeline extends AppCompatActivity {
 
     private EditText number, period;
-    private static final int NOTIFY_ID = 1;
-    public static final String CHANNEL_ID = "CHANNEL_ID";
+    Calendar cal;
+    Button cnfrmBtn;
+    DBHelperPeriod dbHelperPeriod;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,7 +36,10 @@ public class Change_timeline extends AppCompatActivity {
 
         number = findViewById(R.id.timeline_num);
         period = findViewById(R.id.timeline_period);
-        Button cnfrmBtn = findViewById(R.id.page4_confirm_button);
+        cnfrmBtn = findViewById(R.id.page4_confirm_button);
+
+        dbHelperPeriod = new DBHelperPeriod(this);
+        SQLiteDatabase database = dbHelperPeriod.getWritableDatabase();
 
         cnfrmBtn.setOnClickListener(v -> {
             String secondaryNum = number.getText().toString();
@@ -54,25 +53,18 @@ public class Change_timeline extends AppCompatActivity {
             } else {
                 int num = Integer.parseInt(number.getText().toString());
                 String timeline = period.getText().toString();
-                //подключение к бд
-                Calendar cal = getFinalDate(num, timeline);
-                showToast("Изменения сохранены");
+                cal = getFinalDate(num, timeline);
+                setNotify();
+                int length = getLengthOfPeriod(num, timeline);
+                int finalDay = getFinalDayOfPeriod(cal);
+                ContentValues contentValues = new ContentValues();
 
-                Intent intent = new Intent(Change_timeline.this, ActionNotify.class);
-                showToast("почти работает");
-                PendingIntent pendingIntent = PendingIntent.getBroadcast(Change_timeline.this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-                AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
-                long timeAtBtnClick = System.currentTimeMillis();
+                contentValues.put(DBHelperPeriod.FINALTIME, finalDay);
+                contentValues.put(DBHelperPeriod.LENGTH, length);
 
-                //long finalTime = cal.getTimeInMillis();
-                long finalTime = 10 * 1000;
-
-
-                alarmManager.set(AlarmManager.RTC_WAKEUP,
-                        timeAtBtnClick + finalTime,
-                        pendingIntent);
-
-                showToast("работает");
+                database.delete(DBHelperPeriod.TABLE_PERIOD, null, null);
+                database.insert(DBHelperPeriod.TABLE_PERIOD, null, contentValues);
+                showToast("Сохранено");
             }
         });
     }
@@ -100,36 +92,51 @@ public class Change_timeline extends AppCompatActivity {
             case "m":
                 calendar.add(Calendar.MONTH, num);
                 break;
+
         }
         return calendar;
     }
 
+    private void setNotify() {
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        Intent intent = new Intent(this, ActionNotify.class);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        alarmManager.setRepeating(AlarmManager.RTC_WAKEUP, cal.getTimeInMillis(),
+                AlarmManager.INTERVAL_FIFTEEN_MINUTES, pendingIntent);
+    }
+
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, CHANNEL_ID, NotificationManager.IMPORTANCE_HIGH);
+            CharSequence name = "EYELENS";
+            String description = "Срок истек. Замените линзы!";
+            int importance = NotificationManager.IMPORTANCE_HIGH;
+            NotificationChannel channel = new NotificationChannel("EYELENS", name, importance);
+            channel.setDescription(description);
+
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             notificationManager.createNotificationChannel(channel);
         }
     }
 
-//    public PendingIntent getPendingIntent(){
-//        Intent intent = new Intent(this, actionNotify().class);
-//        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
-//        return PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-//    }
+    private int getLengthOfPeriod(int n, String period) {
+        int time = 0;
+        switch (period) {
+            case "d":
+                time = n;
+                break;
+            case "w":
+                time = n * 7;
+                break;
+            case "m":
+                time = n * 30;
+                break;
+        }
+        return time;
+    }
 
-//    private void actionNotify(){
-//
-//        NotificationCompat.Builder builder = new NotificationCompat.Builder(MainActivity.this, CHANNEL_ID)
-//                .setPriority(PRIORITY_HIGH)
-//                .setContentTitle("Title here")
-//                .setContentText("Text here")
-//                .setSmallIcon(R.drawable.ic_launcher_foreground)
-//                .setAutoCancel(false);
-//
-//        NotificationManagerCompat managerCompat = NotificationManagerCompat.from(context);
-//        managerCompat.notify(NOTIFY_ID, builder.build());
-//    }
+    private int getFinalDayOfPeriod(Calendar calendar) {
+        return (int) Math.floor(((double) calendar.getTimeInMillis()) / 1000 / 60 / 60 / 24);
+    }
 
     private void showToast(String text) {
         Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
@@ -138,5 +145,11 @@ public class Change_timeline extends AppCompatActivity {
     public void goBack(View v) {
         Intent intent = new Intent(this, MainActivity.class);
         startActivity(intent);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        dbHelperPeriod.close();
     }
 }
